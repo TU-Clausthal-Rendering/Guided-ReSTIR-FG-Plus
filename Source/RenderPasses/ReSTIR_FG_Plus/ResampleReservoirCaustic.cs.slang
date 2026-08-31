@@ -125,7 +125,7 @@ void main(uint2 pixel: SV_DispatchThreadID)
             //Get Contribution
             let mi = gScene.materials.getMaterialInstance(sd, lod, kMIHints);
             float subPixelJacobian, targetFunction;
-            float p1 = getSplattingMISWeight(toCurrentCam, distToCurrentCam, gPrevCamForward, rPrev, sd, mi, sg, subPixelJacobian, targetFunction);
+            float p1 = getSplattingMISWeight(toCurrentCam, distToCurrentCam, currentCamForward, rPrev, sd, mi, sg, subPixelJacobian, targetFunction);
 
             //Calc Reservoir weigth
             float jacobian = subPixelJacobian / rPrev.subPixelJacobian;

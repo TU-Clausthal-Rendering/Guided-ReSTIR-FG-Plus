@@ -38,7 +38,7 @@ namespace
     const Falcor::ChannelList kOutputChannels
     {
         {kOutputColor, "gOutColor", "HDR output color", false /*optional*/, ResourceFormat::RGBA32Float},
-        {kOutputDebug, "gDebug", "Debug Texture", false, ResourceFormat::RGBA32Float}
+        {kOutputDebug, "gDebug", "Debug Texture", true, ResourceFormat::RGBA32Float}
     };
 
     const Gui::DropdownList kDiffuseClassification = {{0 , "RoughnessThreshold"},{1 , "BSDFLobes"}};
@@ -161,6 +161,18 @@ void ReSTIR_FG_Plus::renderUI(Gui::Widgets& widget) {
             "Maximum Path length for a initial path sample. A path sample stops, when it encounters a diffuse surface"
         );
 
+        if (auto group2 = group.group("NEE Options"))
+        {
+            mRebuildLightSampler |= group.dropdown("NEE Sampler", mEmissiveLightSamplerType);
+            if (mEmissiveLightSamplerType == EmissiveLightSamplerType::LightBVH)
+            {
+                if (auto group3 = group.group("NEE Sampler Options"))
+                {
+                    mpEmissiveLightSampler->renderUI(group3);
+                }
+            }
+        }
+
         if (auto group2 = group.group("Path Resampling Options"))
         {
             group2.checkbox("Enable Resampling", mOptions.enablePathResampling);
@@ -198,7 +210,7 @@ void ReSTIR_FG_Plus::renderUI(Gui::Widgets& widget) {
         group.text("Diffuse Surface Classification:");
         group.tooltip("Determines the diffuse surface classification: \n"
         "RoughnessThreshold: All surfaces higher than the threshold are considered diffuse \n"
-        "BSDFLobes: Uses BSDF lobes to determine if a path/surface is diffuse");
+        "BSDFLobes: Uses BSDF lobes + threshold on specular to determine if a path/surface is diffuse");
         group.indent(10.f);
         changed |= group.dropdown("##DiffuseClassification", kDiffuseClassification, mOptions.diffuseClassificationBSDFLobes);
         group.indent(-10.f);
@@ -263,11 +275,13 @@ void ReSTIR_FG_Plus::execute(RenderContext* pRenderContext, const RenderData& re
     }
 
     //Clear Debug Texture
-    auto pDebugTex = renderData[kOutputDebug]->asTexture();
+    ref<Texture> pDebugTex = nullptr;
+    if(renderData[kOutputDebug])
+        pDebugTex = renderData[kOutputDebug]->asTexture();
     if (mClearDebugTexture && pDebugTex)
         pRenderContext->clearTexture(pDebugTex.get());
     
-    //Disables Resampling for the frame
+    //Disables Resampling for the frame to clear reservoirs
     if (mClearReservoir)
     {
         mCanResample = false;
@@ -292,18 +306,19 @@ void ReSTIR_FG_Plus::execute(RenderContext* pRenderContext, const RenderData& re
         mpPhotonGuiding.reset();
     }
 
-    //Prepare needed Falcor helpers and Buffers/Textures
+    //Prepare needed Falcor light sampling structs and all Resources
     prepareLightingStructure(pRenderContext);
     if (!mHasLights)
     {
         logWarningOnce("Scene has no lights, pass will not execute!");
         return;
     }
-
     prepareResources(pRenderContext, renderData);
 
+    //Prepare ReSTIR DI
     mpRTXDI->beginFrame(pRenderContext, mScreenRes);
 
+    //Update Guiding Textures
     if (mOptions.usePhotonGuiding)
         mpPhotonGuiding->update(pRenderContext, mOptions.photonsDispatched);
 
@@ -355,7 +370,7 @@ void ReSTIR_FG_Plus::execute(RenderContext* pRenderContext, const RenderData& re
 
     //Copy Camera data for splatting
     const CameraData& camData = mpScene->getCamera()->getData();
-    mTemporalCameraViewProjection = camData.viewProjMat;
+    mTemporalCameraViewProjection = camData.viewProjMatNoJitter;
     mTemporalCameraPosition = camData.posW;
     mTemporalCameraForward = math::normalize(camData.cameraW);
 
@@ -393,7 +408,6 @@ void ReSTIR_FG_Plus::prepareLightingStructure(RenderContext* pRenderContext)
     bool analyticUsed = mpScene->useAnalyticLights();
 
     mHasLights = analyticUsed || emissiveUsed;
-    mMixedLights = emissiveUsed && analyticUsed;
 
     //Initialize Emissive Light Sampler
     if (emissiveUsed)
@@ -422,7 +436,7 @@ void ReSTIR_FG_Plus::prepareLightingStructure(RenderContext* pRenderContext)
             mRebuildLightSampler = false;
         }
     }
-    else
+    else //Destroy emissive sampler if it was set and scene does not use emissive lights
     {
         if (mpEmissiveLightSampler)
         {
@@ -435,15 +449,18 @@ void ReSTIR_FG_Plus::prepareLightingStructure(RenderContext* pRenderContext)
         }
     }
 
+    //Update once per frame
     if (mpEmissiveLightSampler)
         mpEmissiveLightSampler->update(pRenderContext);
 
-    //Initialize Enviroment Map sampler
+    // Initialize Enviroment Map sampler
+    // Reset/Rebuild if env map changed
     if (is_set(mpScene->getUpdates(), Scene::UpdateFlags::EnvMapChanged))
     {
         mpEnvMapSampler = nullptr;
     }
 
+    //Create sampler
     if (mpScene->useEnvLight())
     {
         if (!mpEnvMapSampler)
@@ -451,7 +468,7 @@ void ReSTIR_FG_Plus::prepareLightingStructure(RenderContext* pRenderContext)
             mpEnvMapSampler = std::make_unique<EnvMapSampler>(mpDevice, mpScene->getEnvMap());
         }
     }
-    else
+    else //Destroy sampler if env map was removed
     {
         if (mpEnvMapSampler)
         {
@@ -548,7 +565,7 @@ void ReSTIR_FG_Plus::prepareResources(RenderContext* pRenderContext, const Rende
         {
             mCanResample = false;
             mpPathReservoir[i] = Buffer::createStructured(
-                mpDevice, 112u, mScreenRes.x * mScreenRes.y, ResourceBindFlags::ShaderResource | ResourceBindFlags::UnorderedAccess,
+                mpDevice, 96u, mScreenRes.x * mScreenRes.y, ResourceBindFlags::ShaderResource | ResourceBindFlags::UnorderedAccess,
                 Buffer::CpuAccess::None, nullptr, false
             );
             mpPathReservoir[i]->setName("PathReservoir_" + std::to_string(i));
@@ -559,14 +576,6 @@ void ReSTIR_FG_Plus::prepareResources(RenderContext* pRenderContext, const Rende
                 mpDevice, mScreenRes.x, mScreenRes.y, ResourceFormat::RGBA32Float, 1u, 1u, nullptr,
                 ResourceBindFlags::UnorderedAccess | ResourceBindFlags::ShaderResource);
             mpReservoirShiftData[i]->setName("ReservoirShiftData" + std::to_string(i));
-        }
-        if (!mpReservoirRetrace[i] || mResetScreenTex)
-        {
-            mpReservoirRetrace[i] = Buffer::createStructured(
-                mpDevice, sizeof(uint) * 16, mScreenRes.x * mScreenRes.y,
-                ResourceBindFlags::ShaderResource | ResourceBindFlags::UnorderedAccess, Buffer::CpuAccess::None, nullptr, false
-            );
-            mpReservoirRetrace[i]->setName("ReservoirRetrace" + std::to_string(i));
         }
     }
 
@@ -649,7 +658,7 @@ void ReSTIR_FG_Plus::prepareResources(RenderContext* pRenderContext, const Rende
         );
     }
 
-    mResetScreenTex = false;
+    mResetScreenTex = false; //Reset finished
 }
 
 void ReSTIR_FG_Plus::tracePhotonsPass(RenderContext* pRenderContext, const RenderData& renderData)
@@ -812,13 +821,13 @@ void ReSTIR_FG_Plus::traceCameraPass(RenderContext* pRenderContext, const Render
         return defines;
     };
 
-    //Init Shader
+    //Initialize Shader
     if (!mTraceCameraPass.pProgram)
     {
         RtProgram::Desc desc;
         desc.addShaderModules(mpScene->getShaderModules());
         desc.addShaderLibrary(kShaderTraceCamera);
-        desc.setMaxPayloadSize(sizeof(float) * 4);
+        desc.setMaxPayloadSize(16u); //Size of packed VBuffer Hit
         desc.setMaxAttributeSize(mpScene->getRaytracingMaxAttributeSize());
         desc.setMaxTraceRecursionDepth(1);
         if (!mpScene->hasProceduralGeometry())
@@ -842,7 +851,7 @@ void ReSTIR_FG_Plus::traceCameraPass(RenderContext* pRenderContext, const Render
         mTraceCameraPass.pProgram = RtProgram::create(mpDevice, desc, defines);
     }
 
-    //Defines that can change on runtime
+    //Update defines that can change at runtime
     mTraceCameraPass.pProgram->addDefines(getRuntimeDefines());
     if (mpEmissiveLightSampler)
         mTraceCameraPass.pProgram->addDefines(mpEmissiveLightSampler->getDefines());
@@ -850,10 +859,10 @@ void ReSTIR_FG_Plus::traceCameraPass(RenderContext* pRenderContext, const Render
     //Program Vars
     if (!mTraceCameraPass.pVars)
         mTraceCameraPass.initProgramVars(mpDevice, mpScene, mpSampleGenerator);
-
     FALCOR_ASSERT(mTraceCameraPass.pVars);
-    auto var = mTraceCameraPass.pVars->getRootVar();
 
+    //Bind Resources to shader
+    auto var = mTraceCameraPass.pVars->getRootVar();
     //Constant Buffer
     var["CB"]["gFrameCount"] = mFrameCount;
     var["CB"]["gMaxPathLength"] = mOptions.cameraMaxPathLength;

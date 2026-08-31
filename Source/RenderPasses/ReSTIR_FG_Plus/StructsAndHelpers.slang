@@ -469,7 +469,7 @@ bool dispatchShadowRay(ShadingData sd, float3 toLight, float distanceToLight, bo
 bool causticPhotonBackprojection(ShadingData sd, uint2 screenDims, int bufferIndex, RWTexture2D<int> headCounter, RWStructuredBuffer<int> linkedList)
 {
     // Check if position is in camera view
-    float4 screenPos = mul(gScene.camera.getViewProj(), float4(sd.posW, 1));
+    float4 screenPos = mul(gScene.camera.data.viewProjMatNoJitter, float4(sd.posW, 1));
     screenPos /= screenPos.w;
     screenPos.y *= -1;
     screenPos.xy = screenPos.xy * 0.5 + 0.5; // UV from [-1,1] to [0,1]

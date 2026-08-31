@@ -73,7 +73,7 @@ private:
 
         bool enablePathResampling = true;                  // Resampling for paths is enabled
         uint pathNumberSpatialSamples = 1;                 // Number of spatial samples
-        float pathSpatialResamplingRadius = 20.f;          // Spatial resampling radius
+        float pathSpatialResamplingRadius = 30.f;          // Spatial resampling radius
         uint pathConfidenceCap = 20;                       // Confidence cap for path reservoirs
 
         bool enableCausticResampling = true;               // Resampling for caustics is enabled
@@ -90,7 +90,7 @@ private:
         //
 
         bool useLambertianDiffuseBSDF = false;          // Diffuse BSDF used by ReSTIR PT and SuffixReSTIR
-        uint diffuseClassificationBSDFLobes = 0;        // If == 1 uses BSDF lobes to determine if a surface is diffuse
+        uint diffuseClassificationBSDFLobes = 1;        // 0: Only Threshold is used. 1: BSDF lobes + threshold is used to determine if a surface is diffuse
         float specularRoughnessThreshold = 0.25f;       // Any material below this is considered specular
         bool evaluateDeltaPDFs = false;                 // If set on true, delta pdfs are evaluated (always 0), else they are set to 1
         bool enableAlphaTest = true;                    // Alpha Test
@@ -171,8 +171,7 @@ private:
 
     // Light
     bool mHasLights = false;           // True if the scene has any light sources
-    bool mMixedLights = false;         // True if analytic and emissive lights are in the scene
-    EmissiveLightSamplerType mEmissiveLightSamplerType = EmissiveLightSamplerType::LightBVH; //Emissive Sampler Type
+    EmissiveLightSamplerType mEmissiveLightSamplerType = EmissiveLightSamplerType::Power;    //Emissive Sampler Type
     LightBVHSampler::Options mLightBVHOptions;                                               //(Cached) Options for Light BVH Sampler
     bool mRebuildLightSampler = false;                                                       //If true, Emissive Sampler is rebuild
     float3 mNeeLightSelectProb = float3(0.33f);                                              //Probability to select a NEE/Analytic/EnvMapSample
@@ -186,8 +185,6 @@ private:
     bool mClearReservoir = true;                        // Clears both reservoirs
     bool mCanResample = false;                          // Resampling is only allowed if last iterations reservoir was created
     
-    bool mUsePathThreshold = false;                     // Enable resampling only if path length are the same
-    bool mUsePhotonsForDirectLightInReflections = true; // Uses photons for direct light in reflections, else the final gather sample is used
     uint mRNGNumPasses = 11;                             // Offset for RNG generator
 
     //Splatting, camera data from last frame
@@ -214,7 +211,6 @@ private:
     ref<Buffer> mpPhotonCounterCPU;         // CPU copy of counter for readback
     ref<Buffer> mpCausticReservoir[2];      // Reservoir for the Caustic sample
     ref<Buffer> mpPathReservoir[2];         // Reservoir storing the path in primary path space
-    ref<Buffer> mpReservoirRetrace[2];      // Buffer storing the retrace reservoir data (TODO Remove)
     ref<Texture> mpReservoirShiftData[2];   // Shift data for path reservoir (path throughput and jacobian)
 
     ref<Texture> mpLightTraceHeadCounter;   //Screen size head buffer counter for light tracing to store the first hit

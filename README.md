@@ -15,6 +15,7 @@ This project was implemented using NVIDIA's Falcor rendering framework. See [REA
 
 You can download the executable demo from the [Releases Page](https://github.com/TU-Clausthal-Rendering/Guided-ReSTIR-FG-Plus/releases/latest), or build the project by following the instructions in [Building Falcor](#building-falcor) or the build instructions in the original [readme](README_Falcor.md).
 
+**Note:** The provided code has been refactored compared to the version used for the performance evaluation in the paper. Therefore, rendering times may differ from those reported in the paper.
 #### Supplemental Video:
 
 [<img src="http://i.ytimg.com/vi/UZ3_TiyZPmA/maxresdefault.jpg" width="700">](https://youtu.be/UZ3_TiyZPmA)
@@ -51,9 +52,9 @@ The following camera paths compare ReSTIR PT, (unguided) ReSTIR FG, Guided ReSTI
 [<img src="http://i.ytimg.com/vi/IczmO73HfSs/maxresdefault.jpg" width="700">](https://youtu.be/IczmO73HfSs)
 
 ## Other Resampling Algorithms
-In addition to our algorithm, the reposiory and demo provides an implementation of [ReSTIR FG (Lite)](https://github.com/TU-Clausthal-Rendering/ReSTIR-FG) with our guiding approach.
+In addition to our algorithm, the repository and demo provide an implementation of [ReSTIR FG (Lite)](https://github.com/TU-Clausthal-Rendering/ReSTIR-FG) combined with our guiding approach, as well as an implementation of [ReSTIR PT](https://graphics.cs.utah.edu/research/projects/gris/). 
 
-Implementations of ReSTIR PT and the full (non-Lite) version of ReSTIR FG will be added soon.
+The provided ReSTIR PT implementation does not include some of the optimizations present in the original implementation and is intended primarily as a reference and implementation guide. For comparisons, please use the [original implementation](https://github.com/DQLin/ReSTIR_PT) instead. 
 
 ## Demo usage
 The demo contains all four test scenes.
@@ -63,6 +64,8 @@ To test additional scenes that are not included with the demo, see the [Testing 
 
 To change the rendering algorithm, use the `Active Graph` drop-down menu at the top of the UI window. Note that selecting an algorithm allocates the memory required for that algorithm.
 For more information about a setting, hover over the `(?)` icon.
+
+When changing settings or using other scenes, make sure that the **photon buffer does not overflow**, as this can cause darkening and other artifacts. The current photon count and the setting for changing the buffer size can be found under `Photon Options` at the top.
 
 Controls:
 - `WASD` - Camera movement
@@ -77,7 +80,7 @@ Controls:
 Testing with other scenes is possible, however, you may encounter unintended behaviour. The following points should be noted when loading other scenes:
 - A scene can be loaded in Mogwai with `File->Load Scene`.
 - Guided ReSTIR FG+ supports emissive materials and analytic point/spot lights. Photons are not distributed from environment maps or directional lights.
-- The scene currently need to have more than 1 light, this will be fixed in soon.
+- The scene currently requires more than one light source. This may be addressed in a future update.
 
 Falcor supports a variety of scene types:
 - Falcor's `.pyscene` format ([more details](docs/usage/scene-formats.md))

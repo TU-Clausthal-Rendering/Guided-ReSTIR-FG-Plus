@@ -34,12 +34,6 @@ Texture2D<float4> gView;
     RaytracingAccelerationStructure gPhotonAS;
 #endif
 
-static const uint kMIHints = (uint)MaterialInstanceHints::AdjustShadingNormal;
-static const bool kEvalDeltaPdfs = EVAL_DELTA_PDFS;
-static const bool kUseEnvMap = USE_ENV_BACKGROUND;
-static const bool kDiffClassUseLobes = DIFF_CLASS_USE_LOBES;
-static const bool kUsePhotonGuiding = USE_PHOTON_GUIDING;
-
 cbuffer CB
 {
     uint gFrameCount;              // Frame count since scene was loaded.
@@ -58,7 +52,12 @@ cbuffer ShiftCB
 }
 #endif
 
-//Shared defines
+// Shared defines
+static const uint kMIHints = (uint)MaterialInstanceHints::AdjustShadingNormal;
+static const bool kEvalDeltaPdfs = EVAL_DELTA_PDFS;
+static const bool kUseEnvMap = USE_ENV_BACKGROUND;
+static const bool kDiffClassUseLobes = DIFF_CLASS_USE_LOBES;
+static const bool kUsePhotonGuiding = USE_PHOTON_GUIDING;
 static const bool kAlphaTest = ENABLE_ALPHA_TEST;
 static const uint kRNGNumPasses = RNG_NUM_PASSES;
 static const float kRoughnessThreshold = ROUGHNESS_THRESHOLD;
@@ -104,13 +103,13 @@ struct PathData {
     SampleGenerator dirSG;  // Sample Generator used for Random Replay
     SampleGenerator sg;     // Sample Generator used for everything else
 
-    float3 thp;             //Throughput
-    float scatterPDF;       //scatter pdf for last hit
+    float3 thp;             // Throughput
+    float scatterPDF;       // Scatter pdf for last hit
 
-    float3 prevPosW; // PosW from last frame
-    uint flags;             //Path Lenght and Flags
+    float3 prevPosW;        // PosW from last iteration
+    uint flags;             // Path Lenght and Flags
 
-    float3 prevFaceN;       // Face Normal from last frame
+    float3 prevFaceN;       // Face Normal from last iteration
     bool _pad;              // Padding
 
 #if IS_SHIFT
@@ -328,7 +327,7 @@ bool sampleNewDirection(ShadingData sd, IMaterialInstance mi, inout PathData pd,
 /* Add sample to reservoir
     \param[inout] reservoir Reservoir to add the sample to.
     \param[in] rand Random number in [0,1).
-    \param[in] rcThp Throughput after reconnection to light source.
+    \param[in] radiance Radiance of the light sample or photon sample
     \param[in] thp Throughput until the reconnection surface.
     \return true if sample was selected as new representative sample
 */
@@ -385,7 +384,7 @@ void tracePath(RayDesc ray, inout PathData pd, inout PathReservoir pathReservoir
                     {
                         pathReservoir.jacobian = pd.scatterPDF;
                         uint flags = (uint)ReservoirPathFlags::hasNoReconnectionSurface | (uint)ReservoirPathFlags::isEnvMapHit;
-                        flags |= firstHitIsDelta ? 0 : (uint)ReservoirPathFlags::firstHitIsDelta;
+                        flags |= firstHitIsDelta ? (uint)ReservoirPathFlags::firstHitIsDelta : 0;
                         pathReservoir.flags.setReservoirPathFlags(flags);
                     }
                 #endif
@@ -404,11 +403,9 @@ void tracePath(RayDesc ray, inout PathData pd, inout PathReservoir pathReservoir
         //Diffuse Surface and Reconnection Surface
         bool jacobianDistanceThreshold = rayDist > gJacobianDistanceThreshold;
         bool roughnessThreshold = bsdfProperties.roughness > kRoughnessThreshold;
-        bool hitIsDiffuse;
+        bool hitIsDiffuse = roughnessThreshold;
         if (kDiffClassUseLobes)
-            hitIsDiffuse = (mi.getLobeTypes(sd) & (uint)LobeType::Diffuse) > 0;
-        else
-            hitIsDiffuse = roughnessThreshold;
+            hitIsDiffuse |= (mi.getLobeTypes(sd) & (uint)LobeType::Diffuse) > 0;
         bool hitIsReconnectionSurface = hitIsDiffuse && jacobianDistanceThreshold && roughnessThreshold;
 
         // Handle Emissive Hit. The sample is evaluated if the whole path has diffuse surfaces to
@@ -444,7 +441,7 @@ void tracePath(RayDesc ray, inout PathData pd, inout PathReservoir pathReservoir
                 {
                     pathReservoir.jacobian = jacobian;
                     uint flags = (uint)ReservoirPathFlags::hasNoReconnectionSurface | (uint)ReservoirPathFlags::isEmissiveHit;
-                    flags |= firstHitIsDelta ? 0 : (uint)ReservoirPathFlags::firstHitIsDelta;
+                    flags |= firstHitIsDelta ? (uint)ReservoirPathFlags::firstHitIsDelta : 0;
                     pathReservoir.flags.setReservoirPathFlags(flags);
                     pathReservoir.pathLength = pd.pathLength;
                 }
@@ -558,7 +555,7 @@ void tracePath(RayDesc ray, inout PathData pd, inout PathReservoir pathReservoir
                         pathReservoir.samplePosW = photonSample.posW;
                         pathReservoir.sampleRadius = photonSample.radius;
                     }
-                    flags |= firstHitIsDelta ? 0 : (uint)ReservoirPathFlags::firstHitIsDelta;
+                    flags |= firstHitIsDelta ? (uint)ReservoirPathFlags::firstHitIsDelta : 0;
                     pathReservoir.flags.setReservoirPathFlags(flags);
                 }
 
@@ -576,7 +573,7 @@ void tracePath(RayDesc ray, inout PathData pd, inout PathReservoir pathReservoir
                         }
                         pathReservoir.sampleData = sgState;
                         uint flags = (uint)ReservoirPathFlags::hasNoReconnectionSurface | (uint)ReservoirPathFlags::isNEE;
-                        flags |= firstHitIsDelta ? 0 : (uint)ReservoirPathFlags::firstHitIsDelta;
+                        flags |= firstHitIsDelta ?(uint)ReservoirPathFlags::firstHitIsDelta : 0;
                         pathReservoir.flags.setReservoirPathFlags(flags);
                     }
                     pd.lastHitNee = true;
