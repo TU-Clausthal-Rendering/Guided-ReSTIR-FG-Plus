@@ -6,6 +6,11 @@ import Utils.Sampling.SampleGenerator;
 import Utils.Geometry.GeometryHelpers;
 import Utils.Math.MathHelpers;
 
+//Global define that allows compliation even if shader defies are not set
+#ifndef PHOTON_GUIDING_ENABLED
+#define PHOTON_GUIDING_ENABLED 0
+#endif
+
 //A sample created from the Guiding Map
 struct PhotonGuidingSample
 {
@@ -40,18 +45,11 @@ struct PhotonGuidingPhotonLightSample
 
 struct PhotonGuiding
 {
+    #if PHOTON_GUIDING_ENABLED
     static const uint kMappingInvalidIndex = 0xFFFF; //TODO move? 
     static const uint kDiscretizedContributionFactor = PHOTON_GUIDING_DISCRETIZED_CONTRIBUTION_FACTOR;
     static const uint kDiscretizedContributionMax = PHOTON_GUIDING_DISCRETIZED_CONTRIBUTION_MAX;
     static const bool kEnableMapping = PHOTON_GUIDING_USE_MAPPED_GM;
-
-    uint gResolutionLightGM;        // Resolution for the light Contribution/Guiding Map
-    uint gMapTextureResolution;    // Number of directional resources per row if mapping is used
-    uint gResolutionGM;             // Resolution of a single directional guiding resource
-
-    RWTexture2D<uint> gContributionLight;           //Contribution for each light. Can be nullptr
-    RWTexture2D<uint> gContributionDirection;       // Contribution for all directions
-    Texture2D<uint> gMapLightToDirection;           //Mapping from light index -> directional resource, or invalid. Can be nullptr
 
     // Gen Sample
     static const uint kTotalLightCount = PHOTON_GUIDING_TOTAL_LIGHT_COUNT;
@@ -61,6 +59,15 @@ struct PhotonGuiding
     static const uint kMinPhotonsForDirectionalGuiding = PHOTON_GUIDING_MIN_PHOTONS_FOR_DIR_GUIDING;
     static const uint kAnalyticLightIndexOffset = PHOTON_GUIDING_ANALYTIC_LIGHT_OFFSET;
     static const uint kMapTextureSize = PHOTON_GUIDING_MAP_TEXTURE_SIZE;
+    #endif
+
+    uint gResolutionLightGM;        // Resolution for the light Contribution/Guiding Map
+    uint gMapTextureResolution;    // Number of directional resources per row if mapping is used
+    uint gResolutionGM;             // Resolution of a single directional guiding resource
+
+    RWTexture2D<uint> gContributionLight;           //Contribution for each light. Can be nullptr
+    RWTexture2D<uint> gContributionDirection;       // Contribution for all directions
+    Texture2D<uint> gMapLightToDirection;           //Mapping from light index -> directional resource, or invalid. Can be nullptr
 
     Texture2D<uint> gGuidingMapLight;       //Light Guiding Map
     Texture2D<uint> gGuidingMapsDirection;  //Atlas with the directional Guiding Maps
@@ -71,12 +78,17 @@ struct PhotonGuiding
     };
 };
 
+
 //"Public" Functions
 extension PhotonGuiding
 {
     inline uint2 guidingMapUVToPixel(float2 guidingUV)
     {
+    #if PHOTON_GUIDING_ENABLED
         return uint2(floor(guidingUV * gResolutionGM));
+    #else
+        return uint2(0);
+    #endif
     }
 
     /* Applies random subpixel jitter to a local guiding map and returns the local UV coordinates
@@ -86,9 +98,13 @@ extension PhotonGuiding
     */
     inline float2 getUVWithSubpixelJitter(uint2 localPixel, float2 randomVal)
     {
+    #if PHOTON_GUIDING_ENABLED
         float2 uvMin = float2(localPixel) / gResolutionGM;     // UV of top-left of the choosen pixel
         float2 uvMax = float2(localPixel + 1) / gResolutionGM; // UV of bottom-right of the choosen pixel
         return (uvMin + (uvMax - uvMin) * randomVal);       // Final uv with random jitter within the pixel
+    #else
+        return float2(0);
+    #endif
     }
 
     /*  Records guiding contribution of a photon
@@ -98,6 +114,7 @@ extension PhotonGuiding
     */
     void addGuidingContribution(uint lightIndex, uint2 guidingPixel, float contribution)
     {
+    #if PHOTON_GUIDING_ENABLED
         //Early out
         if (contribution <= 0)
             return;
@@ -131,6 +148,7 @@ extension PhotonGuiding
 
         // Record the directional contribution
         InterlockedAdd(gContributionDirection[guidingPixel], discretizedContribution);
+    #endif
     }
 
     /* Samples a light and direction using the Guiding Maps
@@ -138,6 +156,7 @@ extension PhotonGuiding
     bool sampleGuidedLightAndDirection(uint2 pixel, uint dispatchDimX, float2 randomVal, out PhotonGuidingSample pgs)
     {
         pgs = {};
+    #if PHOTON_GUIDING_ENABLED
         if (kTotalLightCount == 0)
             return false;
 
@@ -209,11 +228,15 @@ extension PhotonGuiding
         pgs.isLightGuiding = !useDirectionalGuiding;
 
         return true;
+    #else
+        return false;
+    #endif
     }
 
     bool createPhotonSample(PhotonGuidingSample pgs, inout SampleGenerator sg , out PhotonGuidingPhotonLightSample pls)
     {
         pls = {};
+    #if PHOTON_GUIDING_ENABLED
         // Is the light emissive or analytic?
         bool isAnalytic = pgs.lightIndex >= kAnalyticLightIndexOffset;
 
@@ -277,12 +300,16 @@ extension PhotonGuiding
         // Apply flux scale factor
         pls.flux /= pgs.photonFluxDivFactor;
         return true;
+    #else
+        return false;
+    #endif
     }
 }
 
 //"Private" Functions
 extension PhotonGuiding
 {
+    #if PHOTON_GUIDING_ENABLED
     /* Top-Down Quadtree traversal using mipmaps.
     */
     TraversalSample topDownMipMapTraversal(Texture2D<uint> tex, inout uint photonID, const uint maxMipLevel, uint2 mipIndex = uint2(0))
@@ -333,7 +360,8 @@ extension PhotonGuiding
         ts.pixel = mipIndex;
         ts.photonCount = selectedCellPhotons;
         return ts;
-    } 
+    }
+    #endif
 }
 
 // Global Bound Block

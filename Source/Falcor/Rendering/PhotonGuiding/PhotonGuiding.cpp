@@ -175,6 +175,7 @@ namespace Falcor
     DefineList PhotonGuiding::getDefines()
     {
         DefineList defines = {};
+        defines.add("PHOTON_GUIDING_ENABLED", "1"); 
         defines.add("PHOTON_GUIDING_DISCRETIZED_CONTRIBUTION_FACTOR", std::to_string(mOptions.discretizedContributionFactor));
         defines.add("PHOTON_GUIDING_DISCRETIZED_CONTRIBUTION_MAX", std::to_string(mOptions.discretizedContributionMax));
         defines.add("PHOTON_GUIDING_USE_MAPPED_GM", std::to_string(mOptions.useMappingScheme));
