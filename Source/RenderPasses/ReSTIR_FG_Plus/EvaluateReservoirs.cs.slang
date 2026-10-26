@@ -13,7 +13,7 @@ Texture2D<float4> gView;
 
 StructuredBuffer<PathReservoir> gPathReservoir;
 StructuredBuffer<CausticReservoir> gCausticReservoir;
-Texture2D<float2> gCausticReservoirGuidingData;
+Texture2D<uint2> gCausticReservoirGuidingData;
 
 RWTexture2D<PackedHitInfo> gVBufferPrev;
 RWTexture2D<float4> gViewPrev;
